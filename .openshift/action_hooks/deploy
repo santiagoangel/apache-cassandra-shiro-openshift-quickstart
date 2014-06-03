@@ -1,0 +1,52 @@
+#!/bin/bash
+# This deploy hook gets executed after dependencies are resolved and the
+# build hook has been run but before the application has been started back
+# up again.  This script gets executed directly, so it could be python, php,
+# ruby, etc.
+set -x
+if [ -d $OPENSHIFT_DATA_DIR/cassandra ]
+then
+	exit 0
+else
+	cd $OPENSHIFT_DATA_DIR
+	curl -OL http://downloads.datastax.com/community/dsc.tar.gz
+	curl -o jna-platform.jar -L https://github.com/twall/jna/blob/master/dist/jna-platform.jar?raw=true
+	curl -o jna.jar -L https://github.com/twall/jna/blob/master/dist/jna.jar?raw=true
+	tar -xzvf dsc.tar.gz
+	rm *.tar.gz
+	mv dsc-cassandra-* cassandra
+	mv jna-platform.jar cassandra/lib/
+	mv jna.jar cassandra/lib/
+	mkdir cassandra-data
+	cd cassandra-data
+	mkdir log4j
+	touch log4j/system.log
+	mkdir saved_caches
+	mkdir commitlog
+	mkdir data
+	cd ../cassandra/conf/
+	sed -ig 's,/var/lib/cassandra,'$OPENSHIFT_DATA_DIR'/cassandra-data,' cassandra.yaml
+	sed -ig 's/127.0.0.1/'$OPENSHIFT_JBOSSEWS_IP'/g' cassandra.yaml
+	sed -ig 's/localhost/'$OPENSHIFT_JBOSSEWS_IP'/g' cassandra.yaml	
+	sed -ig 's,7000,17000,' cassandra.yaml	
+	sed -ig 's,7001,17001,' cassandra.yaml
+	sed -ig 's,9160,19160,' cassandra.yaml
+	sed -ig 's,9042,19042,' cassandra.yaml	
+	sed -ig 's/localhost/'$OPENSHIFT_JBOSSEWS_IP'/g' cassandra.yaml	
+	sed -ig 's,/var/lib/cassandra,'$OPENSHIFT_DATA_DIR'/cassandra-data,' cassandra.yaml	
+	sed -ig 's,/var/log/cassandra,'$OPENSHIFT_DATA_DIR'/cassandra-data/log4j,' log4j-server.properties
+	sed -ig 's,${max_sensible_yg_in_mb}M,256M,' cassandra-env.sh
+	sed -ig 's,${desired_yg_in_mb}M,256M,' cassandra-env.sh
+	sed -ig 's,7199,17199,' cassandra-env.sh
+	sed -ig 's,-Dcom.sun.management.jmxremote.port=$JMX_PORT, ,' cassandra-env.sh
+	sed -ig 's,-Dcom.sun.management.jmxremote.ssl=false, ,' cassandra-env.sh
+	sed -ig 's,-Dcom.sun.management.jmxremote.authenticate=false, ,' cassandra-env.sh
+	#please remove the following 3 lines for large gears
+	sed -ig 's,-Xms${MAX_HEAP_SIZE},-Xms256M,' cassandra-env.sh
+	sed -ig 's,-Xmx${MAX_HEAP_SIZE},-Xmx256M,' cassandra-env.sh
+	sed -ig 's,-Xmn${HEAP_NEWSIZE},-Xmn40M,' cassandra-env.sh	
+	cd ../bin/	
+	sed -ig 's,-Dlog4j.configuration=log4j-tools.properties,-Duser.home='$OPENSHIFT_DATA_DIR'/cassandra-data  -Dlog4j.configuration=log4j-tools.properties ,' cassandra-cli	
+
+	
+fi
